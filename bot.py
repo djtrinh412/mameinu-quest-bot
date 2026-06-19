@@ -20,11 +20,13 @@ def get_quests():
         soup = BeautifulSoup(r.text, 'html.parser')
         
         quests = []
-        for tag in soup.find_all(['h3', 'h4', 'div', 'span', 'strong']):
+        for tag in soup.find_all(['h3', 'h4', 'div', 'span', 'strong', 'p']):
             text = tag.get_text(strip=True)
-            if len(text) > 15 and text not in quests:
-                if any(k in text for k in ["Daily", "Raid", "Mame", "Follow", "Visit", "Spread", "Connect", "Capsule", "Timeline", "TG:", "𝕏:"]):
+            if len(text) > 10 and text not in quests:
+                # Bắt các quest thật
+                if any(k in text for k in ["Daily", "Raid", "Mame", "Follow", "Visit", "Spread", "Connect", "Capsule", "Timeline", "TG:", "𝕏:", "TikTok", "Meme", "Song", "Video"]):
                     quests.append(text)
+        
         return quests[:25]
     except Exception as e:
         print("Lỗi:", e)
@@ -32,22 +34,22 @@ def get_quests():
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    await message.answer("✅ Bot running.\nUse /quests")
+    await message.answer("✅ Bot is running.\nUse /quests")
 
 @dp.message(Command("quests"))
 async def send_quests(message: types.Message):
-    await message.answer("🔍 Đang lấy danh sách quest...")
+    await message.answer("🔍 Đang lấy quest...")
     quests = get_quests()
     
     if not quests:
         await message.answer("❌ Không lấy được quest.\n🔗 https://zealy.io/cw/mameinu/questboard")
         return
     
-    text = "**MAME INU - CURRENT QUESTS**\n\n"
+    text = "**MAME INU CURRENT QUESTS**\n\n"
     for i, q in enumerate(quests, 1):
         text += f"{i}. {q}\n\n"
     
-    text += f"🔗 Full Questboard: https://zealy.io/cw/mameinu/questboard\n⏰ {time.strftime('%H:%M %d/%m/%Y')}"
+    text += f"🔗 Full: https://zealy.io/cw/mameinu/questboard\n⏰ {time.strftime('%H:%M %d/%m/%Y')}"
     
     await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
 
