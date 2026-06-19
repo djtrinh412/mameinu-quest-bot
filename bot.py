@@ -22,11 +22,14 @@ def get_quests():
         quests = []
         for tag in soup.find_all(['h3', 'h4', 'div', 'span', 'strong', 'p']):
             text = tag.get_text(strip=True)
-            if len(text) > 12 and text not in quests:
-                if any(k in text for k in ["Daily", "Raid", "Mame", "Follow", "Visit", "Spread", "Connect", "Capsule", "Timeline", "TG:", "𝕏:", "TikTok"]):
+            if len(text) > 10 and text not in quests:
+                # Bắt nhiều quest hơn
+                if any(k in text for k in ["Daily", "Raid", "Mame", "Follow", "Visit", "Spread", "Connect", "Capsule", "Timeline", "TG:", "𝕏:", "TikTok", "Meme", "Song", "Video", "🎨", "📆", "💊", "🐾"]):
                     quests.append(text)
+        
         return quests[:25]
-    except:
+    except Exception as e:
+        print("Lỗi:", e)
         return []
 
 @dp.message(Command("start"))
@@ -39,7 +42,7 @@ async def send_quests(message: types.Message):
     quests = get_quests()
     
     if not quests:
-        await message.answer("❌ Không lấy được quest lúc này.\n\n🔗 https://zealy.io/cw/mameinu/questboard")
+        await message.answer("❌ Không lấy được quest lúc này.\n🔗 https://zealy.io/cw/mameinu/questboard")
         return
     
     text = "**📋 DANH SÁCH NHIỆM VỤ MAME INU**\n\n"
