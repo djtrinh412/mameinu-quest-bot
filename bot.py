@@ -15,18 +15,19 @@ dp = Dispatcher()
 def get_quests():
     try:
         url = "https://zealy.io/cw/mameinu/questboard"
-        headers = {"User-Agent": "Mozilla/5.0"}
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         r = requests.get(url, headers=headers, timeout=20)
         soup = BeautifulSoup(r.text, 'html.parser')
         
         quests = []
-        for tag in soup.find_all(['h3', 'h4', 'div', 'span']):
+        for tag in soup.find_all(['h3', 'h4', 'div', 'span', 'strong']):
             text = tag.get_text(strip=True)
-            if len(text) > 15 and ("Daily" in text or "Raid" in text or "Mame" in text or "Follow" in text or "Visit" in text):
-                if text not in quests:
+            if len(text) > 15 and text not in quests:
+                if any(k in text for k in ["Daily", "Raid", "Mame", "Follow", "Visit", "Spread", "Connect", "Capsule", "Timeline", "TG:", "𝕏:"]):
                     quests.append(text)
-        return quests[:20]
-    except:
+        return quests[:25]
+    except Exception as e:
+        print("Lỗi:", e)
         return []
 
 @dp.message(Command("start"))
@@ -39,19 +40,19 @@ async def send_quests(message: types.Message):
     quests = get_quests()
     
     if not quests:
-        await message.answer("❌ Không lấy được quest lúc này.\n\n🔗 https://zealy.io/cw/mameinu/questboard")
+        await message.answer("❌ Không lấy được quest.\n🔗 https://zealy.io/cw/mameinu/questboard")
         return
     
-    text = "📋 **MAME INU QUESTS**\n\n"
+    text = "**MAME INU - CURRENT QUESTS**\n\n"
     for i, q in enumerate(quests, 1):
         text += f"{i}. {q}\n\n"
     
-    text += f"🔗 Full: https://zealy.io/cw/mameinu/questboard\n⏰ {time.strftime('%H:%M %d/%m')}"
+    text += f"🔗 Full Questboard: https://zealy.io/cw/mameinu/questboard\n⏰ {time.strftime('%H:%M %d/%m/%Y')}"
     
     await message.answer(text, parse_mode="Markdown", disable_web_page_preview=True)
 
 async def main():
-    print("Bot started")
+    print("🚀 Bot started")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
