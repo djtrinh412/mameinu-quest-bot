@@ -1,9 +1,9 @@
 import asyncio
-import requests
-from bs4 import BeautifulSoup
+import time
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-import time
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 import os
 
 # ================== CONFIG ==================
@@ -17,100 +17,80 @@ dp = Dispatcher()
 
 seen_quests = set()
 
-async def get_all_quests():
-    url = "https://zealy.io/cw/mameinu/questboard"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
+def get_all_quests_selenium():
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
+    
+    driver = webdriver.Chrome(options=options)
+    quests = []
     
     try:
-        resp = requests.get(url, headers=headers, timeout=20)
-        soup = BeautifulSoup(resp.text, 'html.parser')
+        driver.get("https://zealy.io/cw/mameinu/questboard")
+        time.sleep(8)  # Chờ load JS
         
-        quests = []
-        # Tìm tất cả text tiềm năng là quest title
-        for tag in soup.find_all(['h3', 'h4', 'div', 'span', 'a', 'p', 'strong']):
-            text = tag.get_text(strip=True)
-            
-            # Điều kiện rộng hơn để bắt hết quest
-            if (len(text) > 8 and 
-                not any(skip in text for skip in ["All Outline", "All", "0 /", "Outline", "Your privacy", "Cookie", "Join the community"])):
-                
-                # Loại bỏ text lặp và quá ngắn
-                if text not in quests and len(text) < 180:
+        # Lấy tất cả text
+        elements = driver.find_elements("xpath", "//h3 | //h4 | //div[contains(@class,'quest')] | //span")
+        
+        for el in elements:
+            text = el.text.strip()
+            if len(text) > 12 and text not in quests:
+                if any(k in text for k in ["Daily", "Raid", "Mame", "Follow", "Visit", "Spread", "Connect", "Capsule"]):
                     quests.append(text)
         
-        # Ưu tiên các quest có emoji hoặc từ khóa rõ
-        priority = []
-        normal = []
-        for q in quests:
-            if any(k in q for k in ["📆", "💊", "🐾", "🎨", "Daily", "Raid", "Mame"]):
-                priority.append(q)
-            else:
-                normal.append(q)
-        
-        return priority + normal[:25]  # Giới hạn tránh spam
+        return quests[:25]
         
     except Exception as e:
-        print(f"Lỗi lấy quest: {e}")
+        print(f"Lỗi Selenium: {e}")
         return []
+    finally:
+        driver.quit()
 
 async def send_all_quests():
-    quests = await get_all_quests()
+    quests = get_all_quests_selenium()
     if not quests:
-        await bot.send_message(CHAT_ID, "❌ Vẫn chưa lấy được quest. Thử lại sau ít phút.")
+        await bot.send_message(CHAT_ID, "❌ Không lấy được quest (Zealy load chậm). Thử lại sau.")
         return
     
-    header = f"""📋 **TẤT CẢ NHIỆM VỤ HIỆN TẠI - MAME INU**
-({len(quests)} quest)
-
-"""
+    header = f"📋 **TẤT CẢ NHIỆM VỤ - MAME INU** ({len(quests)} quest)\n\n"
     message = header
     for i, q in enumerate(quests, 1):
         message += f"**{i}.** {q}\n\n"
-        if len(message) > 3500 or i % 12 == 0:   # Chia tin nhắn
-            await bot.send_message(CHAT_ID, message, parse_mode="Markdown", disable_web_page_preview=True)
+        if len(message) > 3500:
+            await bot.send_message(CHAT_ID, message, parse_mode="Markdown")
             message = ""
             await asyncio.sleep(1)
     
     if message:
-        await bot.send_message(CHAT_ID, message, parse_mode="Markdown", disable_web_page_preview=True)
+        await bot.send_message(CHAT_ID, message, parse_mode="Markdown")
     
-    await bot.send_message(CHAT_ID, "🔗 [Mở Questboard đầy đủ](https://zealy.io/cw/mameinu/questboard)", parse_mode="Markdown")
+    await bot.send_message(CHAT_ID, "🔗 [Questboard](https://zealy.io/cw/mameinu/questboard)")
 
+# Các hàm còn lại giữ nguyên...
 async def check_new_quests():
     global seen_quests
-    quests = await get_all_quests()
+    quests = get_all_quests_selenium()
     new_quests = [q for q in quests if q not in seen_quests]
-    
     for q in new_quests:
         seen_quests.add(q)
-    
     if new_quests:
-        print(f"🚨 Phát hiện {len(new_quests)} quest mới!")
-        for q in new_quests[:5]:
-            msg = f"""🚨 **QUEST MỚI - MAME INU** 🚨
-
-📌 {q}
-
-🔗 [Tham gia ngay](https://zealy.io/cw/mameinu/questboard)
-
-⏰ {time.strftime('%H:%M:%S %d/%m')}
-"""
-            await bot.send_message(CHAT_ID, msg, parse_mode="Markdown", disable_web_page_preview=True)
-            await asyncio.sleep(2)
+        for q in new_quests[:4]:
+            msg = f"🚨 **QUEST MỚI** 🚨\n\n{q}\n\n🔗 [Tham gia](https://zealy.io/cw/mameinu/questboard)"
+            await bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    await message.answer("✅ **Bot Mame Inu Quest** đang chạy!\n/quêtes để xem tất cả nhiệm vụ.")
+    await message.answer("✅ Bot đang chạy!\n/quêtes để xem tất cả nhiệm vụ.")
 
 @dp.message(Command("quests"))
 async def quests_command(message: types.Message):
-    await message.answer("🔍 Đang quét tất cả nhiệm vụ...")
+    await message.answer("🔍 Đang quét... (có thể mất 8-10 giây)")
     await send_all_quests()
 
 async def scheduler():
-    print("🚀 Bot khởi động - Quét mỗi 60 giây")
+    print("🚀 Bot khởi động với Selenium")
     await check_new_quests()
     while True:
         await asyncio.sleep(CHECK_INTERVAL)
@@ -122,4 +102,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-        
