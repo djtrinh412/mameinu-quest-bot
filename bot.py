@@ -1,15 +1,15 @@
 import asyncio
 import requests
-import time
+from bs4 import BeautifulSoup
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+import time
 import os
 
 # ================== CONFIG ==================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = int(os.getenv("CHAT_ID"))
 CHECK_INTERVAL = 60
-SUBDOMAIN = "mameinu"
 # ===========================================
 
 bot = Bot(token=BOT_TOKEN)
@@ -18,56 +18,57 @@ dp = Dispatcher()
 seen_quests = set()
 
 def get_all_quests():
-    url = f"https://api-v2.zealy.io/public/communities/{SUBDOMAIN}/quests"
+    url = "https://zealy.io/cw/mameinu/questboard"
     headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
     }
     
     try:
-        resp = requests.get(url, headers=headers, timeout=20)
-        if resp.status_code != 200:
-            print(f"API lỗi: {resp.status_code}")
-            return []
+        resp = requests.get(url, headers=headers, timeout=25)
+        soup = BeautifulSoup(resp.text, 'html.parser')
         
-        data = resp.json()
-        quests = []
+        quests = set()  # Dùng set để tránh trùng
         
-        for quest in data.get("quests", []):
-            title = quest.get("name") or quest.get("title")
-            if title:
-                quests.append(title.strip())
+        # Tìm tất cả các element có thể chứa tên quest
+        for tag in soup.find_all(['h1', 'h2', 'h3', 'h4', 'div', 'span', 'a', 'p', 'strong']):
+            text = tag.get_text(strip=True)
+            if len(text) > 12 and len(text) < 150:
+                # Loại text rác
+                if any(skip in text for skip in ["All Outline", "Your privacy", "Cookie", "Outline", "0 /", "Join the community"]):
+                    continue
+                if any(k in text for k in ["Daily", "Raid", "Mame", "Follow", "Visit", "Spread", "Connect", "Capsule", "Timeline"]):
+                    quests.add(text)
         
-        return quests[:30]
+        return sorted(list(quests))[:30]
         
     except Exception as e:
-        print(f"Lỗi API: {e}")
+        print(f"Lỗi quét: {e}")
         return []
 
 async def send_all_quests():
-    await bot.send_message(CHAT_ID, "🔍 Đang lấy danh sách nhiệm vụ từ Zealy API...")
+    await bot.send_message(CHAT_ID, "🔍 Đang quét Questboard (mất 5-8 giây)...")
     quests = get_all_quests()
     
     if not quests:
-        await bot.send_message(CHAT_ID, "❌ Hiện tại không lấy được quest. Thử lại sau.")
+        await bot.send_message(CHAT_ID, "❌ Hiện tại không lấy được quest. Thử lại sau 1 phút.")
         return
     
-    header = f"""📋 **TẤT CẢ NHIỆM VỤ - MAME INU**
+    header = f"""📋 **TẤT CẢ NHIỆM VỤ HIỆN TẠI - MAME INU**
 ({len(quests)} quest)
 
 """
     message = header
     for i, q in enumerate(quests, 1):
         message += f"**{i}.** {q}\n\n"
-        if len(message) > 3500 or i % 12 == 0:
-            await bot.send_message(CHAT_ID, message, parse_mode="Markdown")
+        if len(message) > 3800 or i % 10 == 0:
+            await bot.send_message(CHAT_ID, message, parse_mode="Markdown", disable_web_page_preview=True)
             message = ""
             await asyncio.sleep(1)
     
     if message:
         await bot.send_message(CHAT_ID, message, parse_mode="Markdown")
     
-    await bot.send_message(CHAT_ID, "🔗 [Mở Questboard](https://zealy.io/cw/mameinu/questboard)", parse_mode="Markdown")
+    await bot.send_message(CHAT_ID, "🔗 [Mở Questboard đầy đủ](https://zealy.io/cw/mameinu/questboard)", parse_mode="Markdown")
 
 async def check_new_quests():
     global seen_quests
@@ -93,22 +94,4 @@ async def check_new_quests():
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    await message.answer("✅ **Bot Mame Inu Quest** đang chạy tốt!\nDùng /quests để xem tất cả nhiệm vụ.")
-
-@dp.message(Command("quests"))
-async def quests_command(message: types.Message):
-    await send_all_quests()
-
-async def scheduler():
-    print("🚀 Bot API khởi động - Quét mỗi 60 giây")
-    await check_new_quests()
-    while True:
-        await asyncio.sleep(CHECK_INTERVAL)
-        await check_new_quests()
-
-async def main():
-    asyncio.create_task(scheduler())
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    await message.answer("✅ Bot đang chạy!\n/quêtes để xem tất
