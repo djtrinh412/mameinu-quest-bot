@@ -9,34 +9,47 @@ import os
 # ================== CONFIG ==================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = int(os.getenv("CHAT_ID"))
-CHECK_INTERVAL = 60   # 60 giây
+CHECK_INTERVAL = 60
 # ===========================================
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-seen_quests = set()   # Để phát hiện quest mới
+seen_quests = set()
 
 async def get_all_quests():
-    """Lấy tất cả quest hiện có trên Zealy"""
     url = "https://zealy.io/cw/mameinu/questboard"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    }
     
     try:
         resp = requests.get(url, headers=headers, timeout=20)
         soup = BeautifulSoup(resp.text, 'html.parser')
         
         quests = []
-        keywords = ["Daily", "Raid", "Mame", "Follow", "Visit", "Spread", "Connect", "Capsule", "Timeline"]
-        
+        # Tìm tất cả text tiềm năng là quest title
         for tag in soup.find_all(['h3', 'h4', 'div', 'span', 'a', 'p', 'strong']):
             text = tag.get_text(strip=True)
-            if len(text) > 15 and any(k in text for k in keywords) and "Outline" not in text:
-                # Loại bỏ lặp
-                if text not in quests and len(text) < 200:
+            
+            # Điều kiện rộng hơn để bắt hết quest
+            if (len(text) > 8 and 
+                not any(skip in text for skip in ["All Outline", "All", "0 /", "Outline", "Your privacy", "Cookie", "Join the community"])):
+                
+                # Loại bỏ text lặp và quá ngắn
+                if text not in quests and len(text) < 180:
                     quests.append(text)
         
-        return quests[:30]  # Giới hạn 30 quest để tránh spam
+        # Ưu tiên các quest có emoji hoặc từ khóa rõ
+        priority = []
+        normal = []
+        for q in quests:
+            if any(k in q for k in ["📆", "💊", "🐾", "🎨", "Daily", "Raid", "Mame"]):
+                priority.append(q)
+            else:
+                normal.append(q)
+        
+        return priority + normal[:25]  # Giới hạn tránh spam
         
     except Exception as e:
         print(f"Lỗi lấy quest: {e}")
@@ -45,17 +58,17 @@ async def get_all_quests():
 async def send_all_quests():
     quests = await get_all_quests()
     if not quests:
-        await bot.send_message(CHAT_ID, "❌ Không lấy được danh sách quest. Thử lại sau.")
+        await bot.send_message(CHAT_ID, "❌ Vẫn chưa lấy được quest. Thử lại sau ít phút.")
         return
     
     header = f"""📋 **TẤT CẢ NHIỆM VỤ HIỆN TẠI - MAME INU**
-({len(quests)} quest đang có)
+({len(quests)} quest)
 
 """
     message = header
     for i, q in enumerate(quests, 1):
-        message += f"{i}. {q}\n"
-        if i % 15 == 0:  # Chia tin nhắn nếu quá dài
+        message += f"**{i}.** {q}\n\n"
+        if len(message) > 3500 or i % 12 == 0:   # Chia tin nhắn
             await bot.send_message(CHAT_ID, message, parse_mode="Markdown", disable_web_page_preview=True)
             message = ""
             await asyncio.sleep(1)
@@ -63,17 +76,15 @@ async def send_all_quests():
     if message:
         await bot.send_message(CHAT_ID, message, parse_mode="Markdown", disable_web_page_preview=True)
     
-    await bot.send_message(CHAT_ID, f"🔗 [Vào Questboard đầy đủ](https://zealy.io/cw/mameinu/questboard)", parse_mode="Markdown")
+    await bot.send_message(CHAT_ID, "🔗 [Mở Questboard đầy đủ](https://zealy.io/cw/mameinu/questboard)", parse_mode="Markdown")
 
 async def check_new_quests():
     global seen_quests
     quests = await get_all_quests()
+    new_quests = [q for q in quests if q not in seen_quests]
     
-    new_quests = []
-    for q in quests:
-        if q not in seen_quests:
-            seen_quests.add(q)
-            new_quests.append(q)
+    for q in new_quests:
+        seen_quests.add(q)
     
     if new_quests:
         print(f"🚨 Phát hiện {len(new_quests)} quest mới!")
@@ -91,17 +102,16 @@ async def check_new_quests():
 
 @dp.message(Command("start"))
 async def start(message: types.Message):
-    await message.answer("✅ **Bot Mame Inu Quest** đang chạy!\n\nDùng lệnh /quests để xem tất cả nhiệm vụ hiện tại.")
+    await message.answer("✅ **Bot Mame Inu Quest** đang chạy!\n/quêtes để xem tất cả nhiệm vụ.")
 
 @dp.message(Command("quests"))
 async def quests_command(message: types.Message):
-    await message.answer("🔍 Đang quét tất cả nhiệm vụ trên Zealy...")
+    await message.answer("🔍 Đang quét tất cả nhiệm vụ...")
     await send_all_quests()
 
 async def scheduler():
-    print("🚀 Bot đang chạy - Quét quest mỗi 60 giây")
-    await check_new_quests()   # Quét lần đầu
-    
+    print("🚀 Bot khởi động - Quét mỗi 60 giây")
+    await check_new_quests()
     while True:
         await asyncio.sleep(CHECK_INTERVAL)
         await check_new_quests()
